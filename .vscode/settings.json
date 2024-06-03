@@ -1,0 +1,9 @@
+{
+    "makefile.launchConfigurations": [
+        {
+            "cwd": "/home/adrian/src/clox/build",
+            "binaryPath": "/home/adrian/src/clox/build/lox",
+            "binaryArgs": []
+        }
+    ]
+}
