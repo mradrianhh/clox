@@ -2,7 +2,8 @@
 #define _CLOX_COMPILER_H_
 
 #include "common.h"
+#include "core/chunk.h"
 
-void lox_Compile(const char *source);
+bool lox_Compile(const char *source, Chunk *chunk);
 
 #endif

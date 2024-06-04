@@ -45,6 +45,20 @@ int lox_DisassembleInstruction(Chunk *chunk, int offset)
         return SimpleInstruction("OP_MULTIPLY", offset);
     case OP_DIVIDE:
         return SimpleInstruction("OP_DIVIDE", offset);
+    case OP_NIL:
+        return SimpleInstruction("OP_NIL", offset);
+    case OP_TRUE:
+        return SimpleInstruction("OP_TRUE", offset);
+    case OP_FALSE:
+        return SimpleInstruction("OP_FALSE", offset);
+    case OP_NOT:
+        return SimpleInstruction("OP_NOT", offset);
+    case OP_EQUAL:
+        return SimpleInstruction("OP_EQUAL", offset);
+    case OP_GREATER:
+        return SimpleInstruction("OP_GREATER", offset);
+    case OP_LESS:
+        return SimpleInstruction("OP_LESS", offset);
     default:
         printf("Unknown opcode %d\n", instruction);
         return offset + 1;
