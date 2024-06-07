@@ -77,6 +77,9 @@ InterpretResult Run()
 #define READ_BYTE() (*vm.ip++)
 #define READ_CONSTANT() (vm.chunk->constants.values[READ_BYTE()])
 #define READ_STRING() AS_STRING(READ_CONSTANT())
+// Increases IP by two, then combines the two bytecode offsets into a 16-bit unsigned integer.
+#define READ_SHORT()                                    \
+    (vm.ip += 2, (uint16_t)((vm.ip[-2] << 8) | vm.ip[-1]))
 #define BINARY_OP(value_type, op)                       \
     do                                                  \
     {                                                   \
@@ -246,6 +249,23 @@ InterpretResult Run()
             vm.stack[slot] = Peek(0);
             break;
         }
+        case OP_JUMP_IF_FALSE:
+        {
+            // Read the offset of the jump instruction and adjust ip if condition is false.
+            uint16_t offset = READ_SHORT();
+            if(IsFalsey(Peek(0)))
+            {
+                vm.ip += offset;
+            }
+            break;
+        }
+        case OP_JUMP:
+        {
+            // Jump is unconditional, so we simply increase the IP.
+            uint16_t offset = READ_SHORT();
+            vm.ip += offset;
+            break;
+        }
         case OP_RETURN:
         {
             // Exit.
@@ -259,6 +279,7 @@ InterpretResult Run()
 #undef READ_BYTE
 #undef READ_CONSTANT
 #undef READ_STRING
+#undef READ_SHORT
 #undef BINARY_OP
 }
 

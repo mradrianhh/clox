@@ -6,6 +6,7 @@
 static int SimpleInstruction(const char *name, int offset);
 static int ConstantInstruction(const char *name, Chunk *chunk, int offset);
 static int ByteInstruction(const char *name, Chunk *chunk, int offset);
+static int JumpInstruction(const char *name, int sign, Chunk *chunk, int offset);
 
 void lox_DisassembleChunk(Chunk *chunk, const char *name)
 {
@@ -74,6 +75,10 @@ int lox_DisassembleInstruction(Chunk *chunk, int offset)
         return ByteInstruction("OP_GET_LOCAL", chunk, offset);
     case OP_SET_LOCAL:
         return ByteInstruction("OP_SET_LOCAL", chunk, offset);
+    case OP_JUMP:
+        return JumpInstruction("OP_JUMP", 1, chunk, offset);
+    case OP_JUMP_IF_FALSE:
+        return JumpInstruction("OP_JUMP_IF_FALSE", 1, chunk, offset);
     default:
         printf("Unknown opcode %d\n", instruction);
         return offset + 1;
@@ -101,4 +106,13 @@ int ByteInstruction(const char *name, Chunk *chunk, int offset)
     uint8_t slot = chunk->code[offset + 1];
     printf("%-16s %4d\n", name, slot);
     return offset + 2;
+}
+
+int JumpInstruction(const char *name, int sign, Chunk *chunk, int offset)
+{
+    uint16_t jump = (uint16_t)(chunk->code[offset + 1] << 8);
+    jump |= chunk->code[offset + 2];
+    printf("%-16s %4d -> %d\n", name, offset,
+           offset + 3 + sign * jump);
+    return offset + 3;
 }

@@ -65,6 +65,8 @@ static void EmitByte(uint8_t byte);
 static void EmitReturn();
 static void EmitBytes(uint8_t byte1, uint8_t byte2);
 static void EmitConstant(Value value);
+static int EmitJump(uint8_t instruction);
+static void PatchJump(int offset);
 static uint8_t MakeConstant(Value value);
 static Chunk *CurrentChunk();
 static void EndCompiler();
@@ -88,6 +90,7 @@ static void Statement();
 static void PrintStatement();
 static void ExpressionStatement();
 static void Block();
+static void IfStatement();
 
 static void Expression();
 
@@ -204,6 +207,10 @@ void Statement()
         Block();
         EndScope();
     }
+    else if (Match(TOKEN_IF))
+    {
+        IfStatement();
+    }
     else
     {
         ExpressionStatement();
@@ -232,6 +239,47 @@ void Block()
     }
 
     Consume(TOKEN_RIGHT_BRACE, "Expect '}' after block.");
+}
+
+void IfStatement()
+{
+    // When compiling an if-statement, we will place an OP_JUMP_IF_FALSE at the beginning of the 
+    // then-statements, so that the then-statement is skipped if the condition evaluates to false.
+    // We will also place an OP_JUMP instruction at the end of the then-statement
+    // that skips the else-statement if the condition evaluates to true.
+
+    Consume(TOKEN_LEFT_PAREN, "Expect '(' after 'if'.");
+    Expression();
+    Consume(TOKEN_RIGHT_PAREN, "Expect ')' after 'if'-condition.");
+
+    // Use backpatching to hold a temporary offset until we've compiled the
+    // then-statement. 
+    int then_jump = EmitJump(OP_JUMP_IF_FALSE);
+
+    // Right after OP_JUMP_IF_FALSE, we add OP_POP to pop the condition if it evaluated to true.
+    // Note: OP_POP will only be executed here if the condition evaluates to true because it follows the
+    //       OP_JUMP_IF_FALSE instruction.
+    EmitByte(OP_POP);
+    
+    Statement();
+
+    // After compiling the then-statement, we need to prepare an else-jump regardless of whether
+    // the user wrote an else-clause. This is to prevent the VM from executing the else-clause after the
+    // then-clause if the condition is true.
+    int else_jump = EmitJump(OP_JUMP);
+
+    // Right after OP_JUMP, we also add OP_POP to pop the condition if it evaluated to false.
+    EmitByte(OP_POP);
+
+    // When the then-statement is compiled, we patch it with the now-known offset.
+    PatchJump(then_jump);
+
+    if(Match(TOKEN_ELSE))
+    {
+        Statement();
+    }
+    
+    PatchJump(else_jump);
 }
 
 void Expression()
@@ -390,6 +438,30 @@ void EmitBytes(uint8_t byte1, uint8_t byte2)
 void EmitConstant(Value value)
 {
     EmitBytes(OP_CONSTANT, MakeConstant(value));
+}
+
+int EmitJump(uint8_t instruction)
+{
+    EmitByte(instruction);
+    // Temporary offset-placeholder.
+    EmitByte(0xFF);
+    EmitByte(0xFF);
+    // Return the offset of the jump-instruction.
+    return CurrentChunk()->count - 2;
+}
+
+void PatchJump(int offset)
+{
+    int jump = CurrentChunk()->count - offset - 2;
+
+    if(jump > UINT16_MAX)
+    {
+        Error("Max offset length of jump-instruction exceeded");
+    }
+
+    // Sets the jump-offset so that it points to the instruction following the then-statement.
+    CurrentChunk()->code[offset] = (jump >> 8) & 0xFF;
+    CurrentChunk()->code[offset + 1] = jump & 0xFF;
 }
 
 uint8_t MakeConstant(Value value)

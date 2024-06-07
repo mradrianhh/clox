@@ -1,6 +1,3 @@
-var a = "Hello";
-{
-    var a = "Goodbye";
-    print a;
-}
-print a;
+var a = true;
+if(a) print "true";
+else print "false";
