@@ -93,6 +93,7 @@ static void ExpressionStatement();
 static void Block();
 static void IfStatement();
 static void WhileStatement();
+static void ForStatement();
 
 static void Expression();
 
@@ -219,6 +220,10 @@ void Statement()
     {
         WhileStatement();
     }
+    else if (Match(TOKEN_FOR))
+    {
+        ForStatement();
+    }
     else
     {
         ExpressionStatement();
@@ -311,9 +316,93 @@ void WhileStatement()
 
     // Backpatch exit_jump to point to the instruction following the body of the while-statement.
     PatchJump(exit_jump);
-    // The first instruction following the while-statement is OP_POP to clear the 
+    // The first instruction following the while-statement is OP_POP to clear the
     // condition-value from the stack.
     EmitByte(OP_POP);
+}
+
+void ForStatement()
+{
+    // Create a scope for the for-statement to ensure variables declared in it's initalized
+    // is scoped to the for-statement.
+    BeginScope();
+
+    // Initializer.
+    Consume(TOKEN_LEFT_PAREN, "Expect '(' after 'for'.");
+    if (Match(TOKEN_SEMICOLON))
+    {
+        // No initializer.
+    }
+    // Both VariableDeclaration and ExpressionStatement will check for a semicolon
+    // and maintain the stack themselves.
+    else if (Match(TOKEN_VAR))
+    {
+        VariableDeclaration();
+    }
+    else
+    {
+        ExpressionStatement();
+    }
+
+    // Condition. We mark the loop-start here.
+    int loop_start = CurrentChunk()->count;
+    int exit_jump = -1;
+    if (!Match(TOKEN_SEMICOLON))
+    {
+        Expression();
+        Consume(TOKEN_SEMICOLON, "Expect ';' after loop condition.");
+
+        // If the condition evaluates to false, we jump out of the loop.
+        exit_jump = EmitJump(OP_JUMP_IF_FALSE);
+        // If not, we pop the evaluated condition of the stack.
+        EmitByte(OP_POP);
+    }
+
+    // Incrementer.
+    // Since the incrementer is parsed before the body, but needs to execute after the body,
+    // we use a jump to first jump to the body, then jump back and execute the incrementer.
+    if (!Match(TOKEN_RIGHT_PAREN))
+    {
+        // OP_JUMP to jump to body. Will be patched at the end of the incrementer, which is also
+        // the start of the body.
+        int body_jump = EmitJump(OP_JUMP);
+        // Mark the start of the incrementer so the body can jump back to it.
+        int incrementer_start = CurrentChunk()->count;
+        // Then parse the incrementer expression.
+        Expression();
+        // We must remember to pop the expressions value of the stack.
+        EmitByte(OP_POP);
+        // Validate syntax is correct.
+        Consume(TOKEN_RIGHT_PAREN, "Expect ')' after for clauses.");
+        // Add OP_LOOP at end of incrementer body.
+        // Note: This is also the end of the for-statement, so technically, this will be executed last.
+        EmitLoop(loop_start);
+        // We set the loop_start to point to incrementer_start so that when the body
+        // emits OP_LOOP, we return to the incrementer, not the top of the loop.
+        // This is to achieve what was mentioned above:
+        // The incrementer is parsed before the body, so we need to jump to the body then jump back
+        // to execute the body first.
+        loop_start = incrementer_start;
+
+        // Patch body_jump at end of incrementer/start of body.
+        PatchJump(body_jump);
+    }
+
+    // Body.
+    Statement();
+
+    // Emit OP_LOOP at end of body.
+    EmitLoop(loop_start);
+
+    // After loop-body, we backpatch the exit_jump if a conditional is present
+    // and emit OP_POP to clear the condition of the stack.
+    if (exit_jump != -1)
+    {
+        PatchJump(exit_jump);
+        EmitByte(OP_POP);
+    }
+
+    EndScope();
 }
 
 void Expression()
@@ -542,7 +631,7 @@ void EmitLoop(int loop_start)
 
     // Calculate the offset to the start of the loop and add 2 to account for operands of OP_LOOP.
     int offset = CurrentChunk()->count - loop_start + 2;
-    if(offset > UINT16_MAX)
+    if (offset > UINT16_MAX)
     {
         Error("Size of loop-body exceeds max range of OP_LOOP.");
     }
