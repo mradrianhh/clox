@@ -101,6 +101,8 @@ static void Binary(bool can_assign);
 static void Literal(bool can_assign);
 static void String(bool can_assign);
 static void VariableReference(bool can_assign);
+static void And_(bool can_assign);
+static void Or_(bool can_assign);
 
 static void Synchronize();
 static void ErrorAtCurrent(const char *message);
@@ -392,6 +394,44 @@ void VariableReference(bool can_assign)
     NamedVariable(parser.previous, can_assign);
 }
 
+void And_(bool can_assign)
+{
+    // Left hand side of logical-and is already compiled here, and it's evaluated value will 
+    // be on top of the stack. We simply emit OP_JUMP_IF_FALSE.
+    // If the evaluated value of the left-side is false, we know the entire logical-and is false,
+    // so we skip the right-side leaving the evaluated value of the left-side on top of the stack.
+    // If the evaluated value is true, we emit OP_POP to pop it off the stack, and we evaluate 
+    // the right-side.
+    int end_jump = EmitJump(OP_JUMP_IF_FALSE);
+    EmitByte(OP_POP);
+    ParsePrecedence(PREC_AND);
+    PatchJump(end_jump);
+}
+
+void Or_(bool can_assign)
+{
+    // Left-hand side is already evaluated here. If it's value is true, we don't need to 
+    // evaluate the right-hand side, so we hit the OP_JUMP and skip the rest leaving the left-hand
+    // side value on the stack. If it's false, we jump to the right-hand side, we hit the OP_POP to pop 
+    // the evaluated value of the left-hand side of the stack, and we evaluate the right-hand side 
+    // leaving it's value on top of the stack.
+    int else_jump = EmitJump(OP_JUMP_IF_FALSE);
+    int end_jump = EmitJump(OP_JUMP);
+
+    // Backpatch else_jump so we jump here if the left-hand side is false, and the emit OP_POP
+    // so the evaluated left-side value is popped of the stack.
+    PatchJump(else_jump);
+    EmitByte(OP_POP);
+    ParsePrecedence(PREC_OR);
+
+    // After the parsed right-hand side, we backpatch the end-jump so we offset the IP
+    // by the correct amount if the left-hand side is evaluated to true.
+    // We don't emit an OP_POP here, as either we reach this point with left-hand side being true, 
+    // in which case we wish to leave it's value on the stack, or we reach it after processing
+    // the right-hand side, in which case we also want to leave it on the stack.
+    PatchJump(end_jump);
+}
+
 void Advance()
 {
     parser.previous = parser.current;
@@ -603,7 +643,7 @@ ParseRule rules[] = {
     [TOKEN_IDENTIFIER] = {VariableReference, NULL, PREC_NONE},
     [TOKEN_STRING] = {String, NULL, PREC_NONE},
     [TOKEN_NUMBER] = {Number, NULL, PREC_NONE},
-    [TOKEN_AND] = {NULL, NULL, PREC_NONE},
+    [TOKEN_AND] = {NULL, And_, PREC_AND},
     [TOKEN_CLASS] = {NULL, NULL, PREC_NONE},
     [TOKEN_ELSE] = {NULL, NULL, PREC_NONE},
     [TOKEN_FALSE] = {Literal, NULL, PREC_NONE},
@@ -611,7 +651,7 @@ ParseRule rules[] = {
     [TOKEN_FUN] = {NULL, NULL, PREC_NONE},
     [TOKEN_IF] = {NULL, NULL, PREC_NONE},
     [TOKEN_NIL] = {Literal, NULL, PREC_NONE},
-    [TOKEN_OR] = {NULL, NULL, PREC_NONE},
+    [TOKEN_OR] = {NULL, Or_, PREC_OR},
     [TOKEN_PRINT] = {NULL, NULL, PREC_NONE},
     [TOKEN_RETURN] = {NULL, NULL, PREC_NONE},
     [TOKEN_SUPER] = {NULL, NULL, PREC_NONE},
