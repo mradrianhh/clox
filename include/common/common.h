@@ -11,4 +11,6 @@
 #define LOX_EXIT_SUCCESS 0
 #define LOX_EXIT_FAILURE 1
 
+#define UINT8_COUNT (UINT8_MAX + 1)
+
 #endif

@@ -2,11 +2,11 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "common.h"
+#include "common/common.h"
 #include "core/chunk.h"
 #include "core/debug.h"
 #include "vm/vm.h"
-#include "aux/string_helper.h"
+#include "common/string_helper.h"
 
 static int Run(const char *source);
 static int RunFile(const char *path);

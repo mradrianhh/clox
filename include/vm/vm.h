@@ -1,9 +1,10 @@
 #ifndef _CLOX_VM_H_
 #define _CLOX_VM_H_
 
-#include "common.h"
+#include "common/common.h"
 #include "core/chunk.h"
 #include "core/value.h"
+#include "common/hashtable.h"
 
 #define STACK_MAX 256
 
@@ -14,6 +15,8 @@ typedef struct
     Value stack[STACK_MAX];
     Value *stack_top;
     Obj *objects;
+    HashTable strings;
+    HashTable globals;
 } VM;
 
 typedef enum

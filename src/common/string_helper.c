@@ -1,7 +1,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "aux/string_helper.h"
+#include "common/string_helper.h"
 
 void lox_Substring(char **dest, const char *src, size_t start, size_t length)
 {

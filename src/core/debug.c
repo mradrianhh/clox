@@ -5,6 +5,7 @@
 
 static int SimpleInstruction(const char *name, int offset);
 static int ConstantInstruction(const char *name, Chunk *chunk, int offset);
+static int ByteInstruction(const char *name, Chunk *chunk, int offset);
 
 void lox_DisassembleChunk(Chunk *chunk, const char *name)
 {
@@ -59,6 +60,20 @@ int lox_DisassembleInstruction(Chunk *chunk, int offset)
         return SimpleInstruction("OP_GREATER", offset);
     case OP_LESS:
         return SimpleInstruction("OP_LESS", offset);
+    case OP_PRINT:
+        return SimpleInstruction("OP_PRINT", offset);
+    case OP_POP:
+        return SimpleInstruction("OP_POP", offset);
+    case OP_DEFINE_GLOBAL:
+        return ConstantInstruction("OP_DEFINE_GLOBAL", chunk, offset);
+    case OP_GET_GLOBAL:
+        return ConstantInstruction("OP_GET_GLOBAL", chunk, offset);
+    case OP_SET_GLOBAL:
+        return ConstantInstruction("OP_SET_GLOBAL", chunk, offset);
+    case OP_GET_LOCAL:
+        return ByteInstruction("OP_GET_LOCAL", chunk, offset);
+    case OP_SET_LOCAL:
+        return ByteInstruction("OP_SET_LOCAL", chunk, offset);
     default:
         printf("Unknown opcode %d\n", instruction);
         return offset + 1;
@@ -78,5 +93,12 @@ int ConstantInstruction(const char *name, Chunk *chunk, int offset)
     printf("%-16s %4d '", name, constant);
     lox_PrintValue(chunk->constants.values[constant]);
     printf("'\n");
+    return offset + 2;
+}
+
+int ByteInstruction(const char *name, Chunk *chunk, int offset)
+{
+    uint8_t slot = chunk->code[offset + 1];
+    printf("%-16s %4d\n", name, slot);
     return offset + 2;
 }

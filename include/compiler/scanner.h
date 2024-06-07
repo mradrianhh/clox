@@ -1,7 +1,7 @@
 #ifndef _CLOX_SCANNER_H_
 #define _CLOX_SCANNER_H_
 
-#include "common.h"
+#include "common/common.h"
 
 typedef enum
 {

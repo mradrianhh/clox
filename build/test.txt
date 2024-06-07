@@ -1,0 +1,6 @@
+var a = "Hello";
+{
+    var a = "Goodbye";
+    print a;
+}
+print a;

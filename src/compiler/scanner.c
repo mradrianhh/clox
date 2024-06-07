@@ -2,7 +2,7 @@
 #include <stdio.h>
 
 #include "compiler/scanner.h"
-#include "aux/string_helper.h"
+#include "common/string_helper.h"
 
 typedef struct
 {

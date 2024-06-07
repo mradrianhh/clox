@@ -1,7 +1,7 @@
 #ifndef _CLOX_OBJECT_H_
 #define _CLOX_OBJECT_H_
 
-#include "common.h"
+#include "common/common.h"
 #include "value.h"
 
 #define OBJ_TYPE(value) (AS_OBJ(value)->type)
@@ -25,6 +25,7 @@ struct ObjString
     Obj obj;
     int length;
     char *chars;
+    uint32_t hash;
 };
 
 ObjString *lox_CopyString(const char *chars, int length);

@@ -23,10 +23,14 @@ void lox_InitVM()
 {
     ResetStack();
     vm.objects = NULL;
+    lox_InitHashTable(&vm.strings);
+    lox_InitHashTable(&vm.globals);
 }
 
 void lox_FreeVM()
 {
+    lox_FreeHashTable(&vm.strings);
+    lox_FreeHashTable(&vm.globals);
     lox_FreeObjects();
 }
 
@@ -72,6 +76,7 @@ InterpretResult Run()
 {
 #define READ_BYTE() (*vm.ip++)
 #define READ_CONSTANT() (vm.chunk->constants.values[READ_BYTE()])
+#define READ_STRING() AS_STRING(READ_CONSTANT())
 #define BINARY_OP(value_type, op)                       \
     do                                                  \
     {                                                   \
@@ -102,10 +107,13 @@ InterpretResult Run()
         switch (instruction)
         {
         case OP_CONSTANT:
+        {
             Value constant = READ_CONSTANT();
             lox_PushStack(constant);
             break;
+        }
         case OP_NEGATE:
+        {
             if (!IS_NUMBER(Peek(0)))
             {
                 RuntimeError("Operand must be a number.");
@@ -113,7 +121,9 @@ InterpretResult Run()
             }
             lox_PushStack(NUMBER_VAL(-AS_NUMBER(lox_PopStack())));
             break;
+        }
         case OP_ADD:
+        {
             if (IS_STRING(Peek(0)) && IS_STRING(Peek(1)))
             {
                 Concatenate();
@@ -130,27 +140,42 @@ InterpretResult Run()
                 return INTERPRET_RUNTIME_ERROR;
             }
             break;
+        }
         case OP_SUBTRACT:
+        {
             BINARY_OP(NUMBER_VAL, -);
             break;
+        }
         case OP_MULTIPLY:
+        {
             BINARY_OP(NUMBER_VAL, *);
             break;
+        }
         case OP_DIVIDE:
+        {
             BINARY_OP(NUMBER_VAL, /);
             break;
+        }
         case OP_NIL:
+        {
             lox_PushStack(NIL_VAL);
             break;
+        }
         case OP_TRUE:
+        {
             lox_PushStack(BOOL_VAL(true));
             break;
+        }
         case OP_FALSE:
+        {
             lox_PushStack(BOOL_VAL(false));
             break;
+        }
         case OP_NOT:
+        {
             lox_PushStack(BOOL_VAL(IsFalsey(lox_PopStack())));
             break;
+        }
         case OP_EQUAL:
         {
             Value b = lox_PopStack();
@@ -159,20 +184,81 @@ InterpretResult Run()
             break;
         }
         case OP_GREATER:
+        {
             BINARY_OP(BOOL_VAL, >);
             break;
+        }
         case OP_LESS:
+        {
             BINARY_OP(BOOL_VAL, <);
             break;
-        case OP_RETURN:
+        }
+        case OP_PRINT:
+        {
             lox_PrintValue(lox_PopStack());
             printf("\n");
+            break;
+        }
+        case OP_POP:
+        {
+            lox_PopStack();
+            break;
+        }
+        case OP_DEFINE_GLOBAL:
+        {
+            ObjString *name = READ_STRING();
+            lox_AddEntryHashTable(&vm.globals, name, Peek(0));
+            lox_PopStack();
+            break;
+        }
+        case OP_GET_GLOBAL:
+        {
+            ObjString *name = READ_STRING();
+            Value value;
+            if (!lox_GetEntryHashTable(&vm.globals, name, &value))
+            {
+                RuntimeError("Undefined variable '%s'.", name->chars);
+                return INTERPRET_RUNTIME_ERROR;
+            }
+            lox_PushStack(value);
+            break;
+        }
+        case OP_SET_GLOBAL:
+        {
+            ObjString *name = READ_STRING();
+            if (lox_AddEntryHashTable(&vm.globals, name, Peek(0)))
+            {
+                lox_RemoveEntryHashTable(&vm.globals, name);
+                RuntimeError("Undefined variable '%s'.", name->chars);
+                return INTERPRET_RUNTIME_ERROR;
+            }
+            break;
+        }
+        case OP_GET_LOCAL:
+        {
+            uint8_t slot = READ_BYTE();
+            lox_PushStack(vm.stack[slot]);
+            break;
+        }
+        case OP_SET_LOCAL:
+        {
+            uint8_t slot = READ_BYTE();
+            vm.stack[slot] = Peek(0);
+            break;
+        }
+        case OP_RETURN:
+        {
+            // Exit.
             return INTERPRET_OK;
+        }
+        default:
+            break;
         }
     }
 
 #undef READ_BYTE
 #undef READ_CONSTANT
+#undef READ_STRING
 #undef BINARY_OP
 }
 

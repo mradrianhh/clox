@@ -18,25 +18,59 @@ static Obj *AllocateObject(size_t size, ObjType type)
     return object;
 }
 
-static ObjString *AllocateString(char *chars, int length)
+static ObjString *AllocateString(char *chars, int length, uint32_t hash)
 {
     ObjString *string = ALLOCATE_OBJ(ObjString, OBJ_STRING);
     string->length = length;
     string->chars = chars;
+    string->hash = hash;
+    lox_AddEntryHashTable(&vm.strings, string, NIL_VAL);
     return string;
+}
+
+/// @brief Hashes a string using FNV-1a.
+/// @param string to hash.
+/// @param length of string to hash.
+/// @return the hash.
+static uint32_t HashString(const char *string, int length)
+{
+    uint32_t hash = 2166136261u;
+    for (int i = 0; i < length; i++)
+    {
+        hash ^= (uint8_t)string[i];
+        hash *= 16777619;
+    }
+    return hash;
 }
 
 ObjString *lox_CopyString(const char *chars, int length)
 {
+    uint32_t hash = HashString(chars, length);
+
+    // Check if string is interned.
+    ObjString *interned = lox_FindStringHashTable(&vm.strings, chars, length, hash);
+    if (interned != NULL)
+        return interned;
+
     char *heapChars = ALLOCATE(char, length + 1);
     memcpy(heapChars, chars, length);
     heapChars[length] = '\0';
-    return AllocateString(heapChars, length);
+    return AllocateString(heapChars, length, hash);
 }
 
 ObjString *lox_TakeString(char *chars, int length)
 {
-    return AllocateString(chars, length);
+    uint32_t hash = HashString(chars, length);
+
+    // Check if string is interned.
+    ObjString *interned = lox_FindStringHashTable(&vm.strings, chars, length, hash);
+    if (interned != NULL)
+    {
+        FREE_ARRAY(char, chars, length + 1);
+        return interned;
+    }
+
+    return AllocateString(chars, length, hash);
 }
 
 void lox_PrintObject(Value value)

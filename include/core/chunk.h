@@ -1,7 +1,7 @@
 #ifndef _CLOX_CHUNK_H_
 #define _CLOX_CHUNK_H_
 
-#include "common.h"
+#include "common/common.h"
 #include "core/value.h"
 
 typedef enum
@@ -20,6 +20,13 @@ typedef enum
     OP_EQUAL,
     OP_GREATER,
     OP_LESS,
+    OP_PRINT,
+    OP_POP,
+    OP_DEFINE_GLOBAL,
+    OP_GET_GLOBAL,
+    OP_SET_GLOBAL,
+    OP_GET_LOCAL,
+    OP_SET_LOCAL,
 } Opcode;
 
 typedef struct
