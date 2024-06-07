@@ -67,6 +67,7 @@ static void EmitBytes(uint8_t byte1, uint8_t byte2);
 static void EmitConstant(Value value);
 static int EmitJump(uint8_t instruction);
 static void PatchJump(int offset);
+static void EmitLoop(int loop_start);
 static uint8_t MakeConstant(Value value);
 static Chunk *CurrentChunk();
 static void EndCompiler();
@@ -91,6 +92,7 @@ static void PrintStatement();
 static void ExpressionStatement();
 static void Block();
 static void IfStatement();
+static void WhileStatement();
 
 static void Expression();
 
@@ -213,6 +215,10 @@ void Statement()
     {
         IfStatement();
     }
+    else if (Match(TOKEN_WHILE))
+    {
+        WhileStatement();
+    }
     else
     {
         ExpressionStatement();
@@ -245,7 +251,7 @@ void Block()
 
 void IfStatement()
 {
-    // When compiling an if-statement, we will place an OP_JUMP_IF_FALSE at the beginning of the 
+    // When compiling an if-statement, we will place an OP_JUMP_IF_FALSE at the beginning of the
     // then-statements, so that the then-statement is skipped if the condition evaluates to false.
     // We will also place an OP_JUMP instruction at the end of the then-statement
     // that skips the else-statement if the condition evaluates to true.
@@ -255,14 +261,14 @@ void IfStatement()
     Consume(TOKEN_RIGHT_PAREN, "Expect ')' after 'if'-condition.");
 
     // Use backpatching to hold a temporary offset until we've compiled the
-    // then-statement. 
+    // then-statement.
     int then_jump = EmitJump(OP_JUMP_IF_FALSE);
 
     // Right after OP_JUMP_IF_FALSE, we add OP_POP to pop the condition if it evaluated to true.
     // Note: OP_POP will only be executed here if the condition evaluates to true because it follows the
     //       OP_JUMP_IF_FALSE instruction.
     EmitByte(OP_POP);
-    
+
     Statement();
 
     // After compiling the then-statement, we need to prepare an else-jump regardless of whether
@@ -276,12 +282,38 @@ void IfStatement()
     // When the then-statement is compiled, we patch it with the now-known offset.
     PatchJump(then_jump);
 
-    if(Match(TOKEN_ELSE))
+    if (Match(TOKEN_ELSE))
     {
         Statement();
     }
-    
+
     PatchJump(else_jump);
+}
+
+void WhileStatement()
+{
+    // Fetch the offset of the while-instruction so we can loop.
+    int loop_start = CurrentChunk()->count;
+    Consume(TOKEN_LEFT_PAREN, "Expect '(' after 'while'.");
+    Expression();
+    Consume(TOKEN_RIGHT_PAREN, "Expect ')' after condition.");
+
+    int exit_jump = EmitJump(OP_JUMP_IF_FALSE);
+    // If the condition evaluates to true, we don't skip the body of the while-statement
+    // and we have to emit OP_POP to clear the condition-value of the stack.
+    EmitByte(OP_POP);
+    // Then we parse the body of the while-statement.
+    Statement();
+
+    // Then we emit a loop to return to the start of the while-instruction
+    // and re-evaluate the condition.
+    EmitLoop(loop_start);
+
+    // Backpatch exit_jump to point to the instruction following the body of the while-statement.
+    PatchJump(exit_jump);
+    // The first instruction following the while-statement is OP_POP to clear the 
+    // condition-value from the stack.
+    EmitByte(OP_POP);
 }
 
 void Expression()
@@ -396,11 +428,11 @@ void VariableReference(bool can_assign)
 
 void And_(bool can_assign)
 {
-    // Left hand side of logical-and is already compiled here, and it's evaluated value will 
+    // Left hand side of logical-and is already compiled here, and it's evaluated value will
     // be on top of the stack. We simply emit OP_JUMP_IF_FALSE.
     // If the evaluated value of the left-side is false, we know the entire logical-and is false,
     // so we skip the right-side leaving the evaluated value of the left-side on top of the stack.
-    // If the evaluated value is true, we emit OP_POP to pop it off the stack, and we evaluate 
+    // If the evaluated value is true, we emit OP_POP to pop it off the stack, and we evaluate
     // the right-side.
     int end_jump = EmitJump(OP_JUMP_IF_FALSE);
     EmitByte(OP_POP);
@@ -410,10 +442,10 @@ void And_(bool can_assign)
 
 void Or_(bool can_assign)
 {
-    // Left-hand side is already evaluated here. If it's value is true, we don't need to 
+    // Left-hand side is already evaluated here. If it's value is true, we don't need to
     // evaluate the right-hand side, so we hit the OP_JUMP and skip the rest leaving the left-hand
-    // side value on the stack. If it's false, we jump to the right-hand side, we hit the OP_POP to pop 
-    // the evaluated value of the left-hand side of the stack, and we evaluate the right-hand side 
+    // side value on the stack. If it's false, we jump to the right-hand side, we hit the OP_POP to pop
+    // the evaluated value of the left-hand side of the stack, and we evaluate the right-hand side
     // leaving it's value on top of the stack.
     int else_jump = EmitJump(OP_JUMP_IF_FALSE);
     int end_jump = EmitJump(OP_JUMP);
@@ -426,7 +458,7 @@ void Or_(bool can_assign)
 
     // After the parsed right-hand side, we backpatch the end-jump so we offset the IP
     // by the correct amount if the left-hand side is evaluated to true.
-    // We don't emit an OP_POP here, as either we reach this point with left-hand side being true, 
+    // We don't emit an OP_POP here, as either we reach this point with left-hand side being true,
     // in which case we wish to leave it's value on the stack, or we reach it after processing
     // the right-hand side, in which case we also want to leave it on the stack.
     PatchJump(end_jump);
@@ -494,7 +526,7 @@ void PatchJump(int offset)
 {
     int jump = CurrentChunk()->count - offset - 2;
 
-    if(jump > UINT16_MAX)
+    if (jump > UINT16_MAX)
     {
         Error("Max offset length of jump-instruction exceeded");
     }
@@ -502,6 +534,22 @@ void PatchJump(int offset)
     // Sets the jump-offset so that it points to the instruction following the then-statement.
     CurrentChunk()->code[offset] = (jump >> 8) & 0xFF;
     CurrentChunk()->code[offset + 1] = jump & 0xFF;
+}
+
+void EmitLoop(int loop_start)
+{
+    EmitByte(OP_LOOP);
+
+    // Calculate the offset to the start of the loop and add 2 to account for operands of OP_LOOP.
+    int offset = CurrentChunk()->count - loop_start + 2;
+    if(offset > UINT16_MAX)
+    {
+        Error("Size of loop-body exceeds max range of OP_LOOP.");
+    }
+
+    // Emit 16-bit offset value in two bytes.
+    EmitByte((offset >> 8) & 0xFF);
+    EmitByte(offset & 0xFF);
 }
 
 uint8_t MakeConstant(Value value)
