@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <stdarg.h>
 #include <string.h>
+#include <time.h>
 
 #include "vm/vm.h"
 #include "core/debug.h"
@@ -12,12 +13,19 @@
 
 VM vm;
 
+static Value clockNative(int argCount, Value* args) {
+  return NUMBER_VAL((double)clock() / CLOCKS_PER_SEC);
+}
+
 static InterpretResult Run();
 static void ResetStack();
 static Value Peek(int distance);
 static bool IsFalsey(Value value);
 static void Concatenate();
 static void RuntimeError(const char *format, ...);
+static bool CallValue(Value callee, int arg_count);
+static bool Call(ObjFunction *function, int arg_count);
+static void DefineNative(const char *name, NativeFn function);
 
 void lox_InitVM()
 {
@@ -25,6 +33,8 @@ void lox_InitVM()
     vm.objects = NULL;
     lox_InitHashTable(&vm.strings);
     lox_InitHashTable(&vm.globals);
+
+    DefineNative("clock", clockNative);
 }
 
 void lox_FreeVM()
@@ -34,30 +44,15 @@ void lox_FreeVM()
     lox_FreeObjects();
 }
 
-InterpretResult lox_InterpretChunk(Chunk *chunk)
-{
-    vm.chunk = chunk;
-    vm.ip = vm.chunk->code;
-    return Run();
-}
-
 InterpretResult lox_InterpretSource(const char *source)
 {
-    Chunk chunk;
-    lox_InitChunk(&chunk);
-
-    if (!lox_Compile(source, &chunk))
-    {
-        lox_FreeChunk(&chunk);
+    ObjFunction *function = lox_Compile(source);
+    if (function == NULL)
         return INTERPRET_COMPILE_ERROR;
-    }
 
-    vm.chunk = &chunk;
-    vm.ip = vm.chunk->code;
-    InterpretResult result = Run();
-
-    lox_FreeChunk(&chunk);
-    return result;
+    lox_PushStack(OBJ_VAL(function));
+    Call(function, 0);
+    return Run();
 }
 
 void lox_PushStack(Value value)
@@ -74,12 +69,15 @@ Value lox_PopStack()
 
 InterpretResult Run()
 {
-#define READ_BYTE() (*vm.ip++)
-#define READ_CONSTANT() (vm.chunk->constants.values[READ_BYTE()])
+    CallFrame *frame = &vm.frames[vm.frame_count - 1];
+
+#define READ_BYTE() (*frame->ip++)
+#define READ_SHORT() \
+    (frame->ip += 2, \
+     (uint16_t)((frame->ip[-2] << 8) | frame->ip[-1]))
+#define READ_CONSTANT() \
+    (frame->function->chunk.constants.values[READ_BYTE()])
 #define READ_STRING() AS_STRING(READ_CONSTANT())
-// Increases IP by two, then combines the two bytecode offsets into a 16-bit unsigned integer.
-#define READ_SHORT()                                    \
-    (vm.ip += 2, (uint16_t)((vm.ip[-2] << 8) | vm.ip[-1]))
 #define BINARY_OP(value_type, op)                       \
     do                                                  \
     {                                                   \
@@ -104,7 +102,7 @@ InterpretResult Run()
             printf(" ]");
         }
         printf("\n");
-        lox_DisassembleInstruction(vm.chunk, (int)(vm.ip - vm.chunk->code));
+        lox_DisassembleInstruction(&frame->function->chunk, (int)(frame->ip - frame->function->chunk.code));
 #endif
         uint8_t instruction = READ_BYTE();
         switch (instruction)
@@ -240,22 +238,22 @@ InterpretResult Run()
         case OP_GET_LOCAL:
         {
             uint8_t slot = READ_BYTE();
-            lox_PushStack(vm.stack[slot]);
+            lox_PushStack(frame->slots[slot]);
             break;
         }
         case OP_SET_LOCAL:
         {
             uint8_t slot = READ_BYTE();
-            vm.stack[slot] = Peek(0);
+            frame->slots[slot] = Peek(0);
             break;
         }
         case OP_JUMP_IF_FALSE:
         {
             // Read the offset of the jump instruction and adjust ip if condition is false.
             uint16_t offset = READ_SHORT();
-            if(IsFalsey(Peek(0)))
+            if (IsFalsey(Peek(0)))
             {
-                vm.ip += offset;
+                frame->ip += offset;
             }
             break;
         }
@@ -263,19 +261,39 @@ InterpretResult Run()
         {
             // Jump is unconditional, so we simply increase the IP.
             uint16_t offset = READ_SHORT();
-            vm.ip += offset;
+            frame->ip += offset;
             break;
         }
         case OP_LOOP:
         {
             uint16_t offset = READ_SHORT();
-            vm.ip -= offset;
+            frame->ip -= offset;
+            break;
+        }
+        case OP_CALL:
+        {
+            int arg_count = READ_BYTE();
+            if (!CallValue(Peek(arg_count), arg_count))
+            {
+                return INTERPRET_RUNTIME_ERROR;
+            }
+            frame = &vm.frames[vm.frame_count - 1];
             break;
         }
         case OP_RETURN:
         {
-            // Exit.
-            return INTERPRET_OK;
+            Value result = lox_PopStack();
+            vm.frame_count--;
+            if (vm.frame_count == 0)
+            {
+                lox_PopStack();
+                return INTERPRET_OK;
+            }
+
+            vm.stack_top = frame->slots;
+            lox_PushStack(result);
+            frame = &vm.frames[vm.frame_count - 1];
+            break;
         }
         default:
             break;
@@ -292,6 +310,7 @@ InterpretResult Run()
 void ResetStack()
 {
     vm.stack_top = vm.stack;
+    vm.frame_count = 0;
 }
 
 Value Peek(int distance)
@@ -327,8 +346,77 @@ void RuntimeError(const char *format, ...)
     va_end(args);
     fputs("\n", stderr);
 
-    size_t instruction = vm.ip - vm.chunk->code - 1;
-    int line = vm.chunk->lines[instruction];
-    fprintf(stderr, "[line %d] in script\n", line);
+    for (int i = vm.frame_count - 1; i >= 0; i--)
+    {
+        CallFrame *frame = &vm.frames[i];
+        ObjFunction *function = frame->function;
+        size_t instruction = frame->ip - function->chunk.code - 1;
+        fprintf(stderr, "[line %d] in ",
+                function->chunk.lines[instruction]);
+        if (function->name == NULL)
+        {
+            fprintf(stderr, "script\n");
+        }
+        else
+        {
+            fprintf(stderr, "%s()\n", function->name->chars);
+        }
+    }
+
     ResetStack();
+}
+
+bool CallValue(Value callee, int arg_count)
+{
+    if (IS_OBJ(callee))
+    {
+        switch (OBJ_TYPE(callee))
+        {
+        case OBJ_FUNCTION:
+            return Call(AS_FUNCTION(callee), arg_count);
+        case OBJ_NATIVE:
+        {
+            NativeFn native = AS_NATIVE(callee);
+            Value result = native(arg_count, vm.stack_top - arg_count);
+            vm.stack_top -= arg_count + 1;
+            lox_PushStack(result);
+            return true;
+        }
+        default:
+            break; // Non-callable object type.
+        }
+    }
+    RuntimeError("Can only call functions and classes.");
+    return false;
+}
+
+bool Call(ObjFunction *function, int arg_count)
+{
+    if (arg_count != function->arity)
+    {
+        RuntimeError("Expected %d arguments but got %d.",
+                     function->arity, arg_count);
+        return false;
+    }
+
+    if (vm.frame_count == FRAMES_MAX)
+    {
+        RuntimeError("Stack overflow.");
+        return false;
+    }
+
+    CallFrame *frame = &vm.frames[vm.frame_count++];
+    frame->function = function;
+    frame->ip = function->chunk.code;
+    frame->slots = vm.stack_top - arg_count - 1;
+    return true;
+}
+
+void DefineNative(const char *name, NativeFn function)
+{
+    lox_PushStack(OBJ_VAL(lox_CopyString(name, (int)strlen(name))));
+    lox_PushStack(OBJ_VAL(lox_CreateNative(function)));
+    lox_AddEntryHashTable(&vm.globals, AS_STRING(vm.stack[0]), vm.stack[1]);
+    lox_PopStack();
+    lox_PopStack();
 }

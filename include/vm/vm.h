@@ -3,15 +3,24 @@
 
 #include "common/common.h"
 #include "core/chunk.h"
+#include "core/object.h"
 #include "core/value.h"
 #include "common/hashtable.h"
 
-#define STACK_MAX 256
+#define FRAMES_MAX 64
+#define STACK_MAX (FRAMES_MAX * UINT8_COUNT)
 
 typedef struct
 {
-    Chunk *chunk;
+    ObjFunction *function;
     uint8_t *ip;
+    Value *slots;
+} CallFrame;
+
+typedef struct
+{
+    CallFrame frames[FRAMES_MAX];
+    int frame_count;
     Value stack[STACK_MAX];
     Value *stack_top;
     Obj *objects;
@@ -30,7 +39,6 @@ extern VM vm;
 
 void lox_InitVM();
 void lox_FreeVM();
-InterpretResult lox_InterpretChunk(Chunk *chunk);
 InterpretResult lox_InterpretSource(const char *source);
 void lox_PushStack(Value value);
 Value lox_PopStack();

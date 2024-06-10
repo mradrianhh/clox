@@ -43,6 +43,22 @@ static uint32_t HashString(const char *string, int length)
     return hash;
 }
 
+ObjFunction *lox_CreateFunction()
+{
+    ObjFunction *function = ALLOCATE_OBJ(ObjFunction, OBJ_FUNCTION);
+    function->arity = 0;
+    function->name = NULL;
+    lox_InitChunk(&function->chunk);
+    return function;
+}
+
+ObjNative *lox_CreateNative(NativeFn function)
+{
+    ObjNative *native = ALLOCATE_OBJ(ObjNative, OBJ_NATIVE);
+    native->function = function;
+    return native;
+}
+
 ObjString *lox_CopyString(const char *chars, int length)
 {
     uint32_t hash = HashString(chars, length);
@@ -73,12 +89,29 @@ ObjString *lox_TakeString(char *chars, int length)
     return AllocateString(chars, length, hash);
 }
 
+static void PrintFunction(ObjFunction *function)
+{
+    if (function->name == NULL)
+    {
+        printf("<script>");
+        return;
+    }
+
+    printf("<fn %s>", function->name->chars);
+}
+
 void lox_PrintObject(Value value)
 {
     switch (OBJ_TYPE(value))
     {
     case OBJ_STRING:
         printf("%s", AS_CSTRING(value));
+        break;
+    case OBJ_FUNCTION:
+        PrintFunction(AS_FUNCTION(value));
+        break;
+    case OBJ_NATIVE:
+        printf("<native fn>");
         break;
     }
 }

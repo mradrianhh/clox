@@ -81,6 +81,8 @@ int lox_DisassembleInstruction(Chunk *chunk, int offset)
         return JumpInstruction("OP_JUMP_IF_FALSE", 1, chunk, offset);
     case OP_LOOP:
         return JumpInstruction("OP_LOOP", -1, chunk, offset);
+    case OP_CALL:
+        return ByteInstruction("OP_CALL", chunk, offset);
     default:
         printf("Unknown opcode %d\n", instruction);
         return offset + 1;
