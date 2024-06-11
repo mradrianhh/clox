@@ -129,7 +129,7 @@ void DisplayHelp()
 void DisplayHeader()
 {
     system("clear");
-    printf("Lox Lang Interpreter\n");
+    printf("Lox Lang Interpreter \n");
     printf("Enter '.help' to see a list of commands.\n\n");
 }
 

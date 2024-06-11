@@ -3,7 +3,7 @@
         {
             "name": "Linux",
             "includePath": [
-                "${workspaceFolder}/include/**"
+                "${workspaceFolder}/CloxCore/include/**"
             ],
             "defines": [],
             "compilerPath": "/usr/bin/gcc",
