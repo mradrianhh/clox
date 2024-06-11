@@ -1,3 +1,3 @@
 # CLOX
 
-Run "make help".
+Clone and run "make help".
