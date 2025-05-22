@@ -1034,7 +1034,7 @@ void Function(FunctionType type)
     Block();
 
     ObjFunction *function = EndCompiler();
-    EmitBytes(OP_CONSTANT, MakeConstant(OBJ_VAL(function)));
+    EmitBytes(OP_CLOSURE, MakeConstant(OBJ_VAL(function)));
 }
 
 uint8_t ArgumentList()

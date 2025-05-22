@@ -43,6 +43,13 @@ static uint32_t HashString(const char *string, int length)
     return hash;
 }
 
+ObjClosure *lox_CreateClosure(ObjFunction *function)
+{
+    ObjClosure *closure = ALLOCATE_OBJ(ObjClosure, OBJ_CLOSURE);
+    closure->function = function;
+    return closure;
+}
+
 ObjFunction *lox_CreateFunction()
 {
     ObjFunction *function = ALLOCATE_OBJ(ObjFunction, OBJ_FUNCTION);
@@ -109,6 +116,9 @@ void lox_PrintObject(Value value)
         break;
     case OBJ_FUNCTION:
         PrintFunction(AS_FUNCTION(value));
+        break;
+    case OBJ_CLOSURE:
+        PrintFunction(AS_CLOSURE(value)->function);
         break;
     case OBJ_NATIVE:
         printf("<native fn>");

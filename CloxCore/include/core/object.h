@@ -7,6 +7,9 @@
 
 #define OBJ_TYPE(value) (AS_OBJ(value)->type)
 
+#define IS_CLOSURE(value) IsObjType(value, OBJ_CLOSURE)
+#define AS_CLOSURE(value) ((ObjClosure *)AS_OBJ(value))
+
 #define IS_FUNCTION(value) IsObjType(value, OBJ_FUNCTION)
 #define AS_FUNCTION(value) ((ObjFunction *)AS_OBJ(value))
 
@@ -20,7 +23,10 @@
 typedef enum
 {
     OBJ_STRING,
+    // Function is the compile-time representation of a function.
     OBJ_FUNCTION,
+    // Closure is the runtime representation of a function.
+    OBJ_CLOSURE,
     OBJ_NATIVE,
 } ObjType;
 
@@ -46,6 +52,7 @@ struct ObjString
     uint32_t hash;
 };
 
+// ObjFunction is the compile-time representation of a function.
 typedef struct
 {
     Obj obj;
@@ -54,6 +61,15 @@ typedef struct
     ObjString *name;
 } ObjFunction;
 
+// ObjClosure is a wrapped around ObjFunction providing the runtime-representation of a function.
+// This provides all the runtime-state necessary.
+typedef struct
+{
+    Obj obj;
+    ObjFunction *function;
+} ObjClosure;
+ 
+ObjClosure *lox_CreateClosure(ObjFunction *function);
 ObjFunction *lox_CreateFunction();
 ObjNative *lox_CreateNative(NativeFn function);
 ObjString *lox_CopyString(const char *chars, int length);
